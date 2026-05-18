@@ -6,6 +6,7 @@ import {
   LANGUAGES, NATIONALITIES, TONES, PILLAR_META, emptyClientState
 } from "./brief-schema.js";
 import { saveClient, getClient } from "./db.js";
+import { openBriefImporter } from "./brief-importer.js";
 
 let state = null;
 let panel = null;
@@ -25,14 +26,19 @@ function render() {
   const screen = WIZARD_SCREENS[state.current_screen];
   panel.innerHTML = `
     <div class="wizard">
-      <div class="wizard-progress">
-        ${WIZARD_SCREENS.map((s, i) => `
-          <div class="wizard-step ${i === state.current_screen ? "wizard-step--active" : ""} ${i < state.current_screen ? "wizard-step--done" : ""}"
-               data-screen="${i}" title="${s.title}">
-            <span class="wizard-step__icon">${s.icon}</span>
-            <span class="wizard-step__label">${s.id}</span>
-          </div>
-        `).join("")}
+      <div class="wizard-topbar">
+        <div class="wizard-progress">
+          ${WIZARD_SCREENS.map((s, i) => `
+            <div class="wizard-step ${i === state.current_screen ? "wizard-step--active" : ""} ${i < state.current_screen ? "wizard-step--done" : ""}"
+                 data-screen="${i}" title="${s.title}">
+              <span class="wizard-step__icon">${s.icon}</span>
+              <span class="wizard-step__label">${s.id}</span>
+            </div>
+          `).join("")}
+        </div>
+        <button class="btn btn--ghost btn-import-brief" id="btn-import-brief" title="Cargar brief existente con IA">
+          ⚡ Cargar brief existente
+        </button>
       </div>
 
       <div class="wizard-body">
@@ -60,6 +66,13 @@ function render() {
   document.getElementById("btn-prev").addEventListener("click", () => navigate(-1));
   document.getElementById("btn-next").addEventListener("click", () => navigate(+1));
   document.getElementById("btn-save-exit").addEventListener("click", saveAndExit);
+
+  // Wire brief importer button
+  document.getElementById("btn-import-brief").addEventListener("click", () => {
+    openBriefImporter({
+      onApply: (extracted) => applyExtractedToState(extracted)
+    });
+  });
 
   // Wire progress dots (click to jump · only to completed or current)
   panel.querySelectorAll(".wizard-step").forEach(el => {
@@ -371,6 +384,62 @@ async function finalizeWizard() {
   const res = await saveClient(state);
   notify(`✅ Cliente finalizado · ${res.mode} · ${res.id}`);
   document.querySelector(`[data-tab="clients"]`)?.click();
+}
+
+// ============ APPLY EXTRACTED BRIEF (Turn 6h) ============
+// Merge extracted data into the wizard state · keeps any field already entered by operator
+function applyExtractedToState(extracted) {
+  if (!extracted || !state) return;
+
+  // Merge official_data · only fill empty fields, don't overwrite operator's manual entries
+  if (extracted.official_data) {
+    state.official_data = state.official_data || {};
+    Object.entries(extracted.official_data).forEach(([k, v]) => {
+      if (!state.official_data[k] || String(state.official_data[k]).trim() === "") {
+        state.official_data[k] = v;
+      }
+    });
+  }
+
+  // Merge brief sections
+  if (extracted.brief) {
+    state.brief = state.brief || { realtor: {}, avatar: {}, data: {}, activation: {} };
+    ["realtor", "avatar", "data"].forEach(section => {
+      if (extracted.brief[section]) {
+        state.brief[section] = state.brief[section] || {};
+        Object.entries(extracted.brief[section]).forEach(([k, v]) => {
+          if (!state.brief[section][k] || String(state.brief[section][k]).trim() === "") {
+            state.brief[section][k] = v;
+          }
+        });
+      }
+    });
+
+    // Activation overwrites · localization + pillars come as a unit
+    if (extracted.brief.activation) {
+      state.brief.activation = state.brief.activation || {};
+      if (extracted.brief.activation.localization) {
+        state.brief.activation.localization = {
+          ...(state.brief.activation.localization || {}),
+          ...extracted.brief.activation.localization
+        };
+      }
+      if (extracted.brief.activation.pillars_active) {
+        state.brief.activation.pillars_active = {
+          ...(state.brief.activation.pillars_active || {}),
+          ...extracted.brief.activation.pillars_active,
+          p1_onboard: true  // always locked
+        };
+      }
+    }
+  }
+
+  // Jump to first incomplete screen so operator can review
+  // Screen 1 (accesses) → 2 (official_data) → 3 (brief) · check from current onwards
+  const fromScreen = Math.min(state.current_screen, 1);  // start from accesses or current
+  state.current_screen = fromScreen < 1 ? 1 : state.current_screen;
+  render();
+  notify("⚡ Brief importado · revisá los campos y completá lo que falte");
 }
 
 // ============ HELPERS ============

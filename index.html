@@ -14,8 +14,10 @@
     </div>
   </div>
 
-  <!-- Config global (no-module · sets window.FIREBASE_CONFIG · window.GEMINI_API_KEY) -->
-  <script src="firebase-config.js"></script>
+  <!-- Config global · firebase-config.local.js carga primero (gitignored · contiene secrets reales) ·
+       si no existe (404), continúa silencioso y firebase-config.js usa placeholders -->
+  <script src="firebase-config.local.js?v=2" onerror="this.remove();" defer></script>
+  <script src="firebase-config.js?v=2" defer></script>
 
   <!-- html-docx-js · DOCX from HTML (no npm) -->
   <script src="https://unpkg.com/html-docx-js@0.3.1/dist/html-docx.js"></script>

@@ -1877,6 +1877,278 @@ main {
 }
 .editor-preview h3 { color: var(--capitan-orange-dark); }
 
+/* ============ WIZARD TOPBAR (Turn 6h) ============ */
+.wizard-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.wizard-topbar .wizard-progress { flex: 1; }
+.btn-import-brief {
+  background: linear-gradient(135deg, var(--capitan-orange-light), white);
+  border: 1.5px solid var(--capitan-orange);
+  color: var(--capitan-orange-dark);
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 8px;
+  white-space: nowrap;
+  transition: transform .12s, box-shadow .12s;
+}
+.btn-import-brief:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(232, 106, 30, .25);
+  background: linear-gradient(135deg, var(--capitan-orange), var(--capitan-orange-dark));
+  color: white;
+}
+
+/* ============ BRIEF IMPORTER MODAL (Turn 6h) ============ */
+.modal--importer {
+  max-width: 900px;
+  width: calc(100% - 32px);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal-body--importer {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+.importer-intro {
+  background: var(--capitan-orange-light);
+  border-left: 3px solid var(--capitan-orange);
+  border-radius: 4px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--gray-700);
+  margin: 0 0 18px;
+  line-height: 1.5;
+}
+
+.importer-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--gray-200);
+  margin-bottom: 14px;
+}
+.importer-tab {
+  background: none;
+  border: 0;
+  padding: 10px 18px;
+  font-size: 14px;
+  color: var(--gray-700);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color .12s, border-color .12s;
+}
+.importer-tab--active {
+  color: var(--capitan-orange-dark);
+  border-bottom-color: var(--capitan-orange);
+  font-weight: 700;
+}
+
+#importer-paste {
+  width: 100%;
+  min-height: 280px;
+  padding: 12px;
+  font-family: "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  resize: vertical;
+}
+#importer-paste:focus {
+  outline: none;
+  border-color: var(--capitan-orange);
+  box-shadow: 0 0 0 3px var(--capitan-orange-light);
+}
+.importer-hint {
+  font-size: 11px;
+  color: var(--gray-500);
+  margin: 6px 0 0;
+  font-style: italic;
+}
+
+/* Dropzone */
+.importer-dropzone {
+  border: 2px dashed var(--gray-300);
+  border-radius: 10px;
+  padding: 40px 20px;
+  text-align: center;
+  transition: background .12s, border-color .12s;
+  cursor: pointer;
+  background: var(--gray-50);
+}
+.importer-dropzone--active {
+  background: var(--capitan-orange-light);
+  border-color: var(--capitan-orange);
+}
+.importer-dropzone__icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+.importer-dropzone__inner p {
+  margin: 4px 0;
+}
+.importer-formats {
+  font-size: 11px;
+  margin-top: 10px !important;
+}
+.importer-file-preview {
+  margin-top: 14px;
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.file-info {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--capitan-orange-light);
+  border-bottom: 1px solid var(--gray-200);
+  font-size: 12px;
+}
+.file-preview-text {
+  margin: 0;
+  padding: 12px;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  max-height: 200px;
+  overflow-y: auto;
+  background: white;
+  white-space: pre-wrap;
+}
+
+/* Progress spinner during AI extraction */
+.importer-progress {
+  margin-top: 18px;
+  padding: 24px;
+  background: var(--gray-50);
+  border-radius: 10px;
+  text-align: center;
+  border: 1px solid var(--gray-200);
+}
+.importer-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--gray-200);
+  border-top-color: var(--capitan-orange);
+  border-radius: 50%;
+  animation: importer-spin 0.9s linear infinite;
+  margin: 0 auto 14px;
+}
+@keyframes importer-spin {
+  to { transform: rotate(360deg); }
+}
+#importer-progress-text {
+  font-size: 13px;
+  color: var(--gray-700);
+  margin: 0;
+}
+
+/* Results table */
+.importer-results { margin-top: 14px; }
+.importer-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.summary-stat {
+  background: var(--gray-50);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+  border: 1px solid var(--gray-200);
+}
+.summary-stat strong {
+  display: block;
+  font-size: 22px;
+  color: var(--capitan-orange-dark);
+  margin-bottom: 2px;
+}
+.summary-stat span {
+  font-size: 11px;
+  color: var(--gray-700);
+}
+
+.results-section { margin: 14px 0; }
+.results-section-title {
+  font-size: 13px;
+  margin: 0 0 6px;
+  color: var(--gray-900);
+}
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.result-row td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--gray-100);
+  vertical-align: top;
+}
+.result-row:last-child td { border-bottom: 0; }
+.result-row--filled { background: white; }
+.result-row--empty  { background: var(--gray-50); opacity: .72; }
+.result-label {
+  width: 42%;
+  font-weight: 600;
+  color: var(--gray-700);
+}
+.result-icon {
+  display: inline-block;
+  width: 14px;
+  color: var(--ok);
+  font-weight: 700;
+}
+.result-row--empty .result-icon { color: var(--gray-300); }
+.result-val {
+  color: var(--gray-900);
+  white-space: pre-wrap;
+}
+.result-empty {
+  color: var(--gray-500);
+  font-style: italic;
+}
+
+.alert--warn {
+  background: #FEF3C7;
+  border-left: 3px solid var(--warn);
+  padding: 10px 14px;
+  border-radius: 4px;
+  margin: 12px 0;
+  font-size: 13px;
+  color: #78350F;
+}
+.alert--warn ul { margin: 6px 0 0 20px; padding: 0; }
+.alert--error {
+  background: #FEE2E2;
+  border-left: 3px solid var(--err);
+  padding: 10px 14px;
+  border-radius: 4px;
+  margin: 12px 0;
+  font-size: 13px;
+  color: #991B1B;
+}
+
+.importer-final-hint {
+  margin-top: 16px;
+  padding: 10px 14px;
+  background: var(--gray-50);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* ============ RESPONSIVE ============ */
 @media (max-width: 720px) {
   .form-grid { grid-template-columns: 1fr; }
