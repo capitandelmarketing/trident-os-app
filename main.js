@@ -8,6 +8,7 @@ import { startWizard } from "./wizard.js";
 import { renderClientsTab } from "./clients.js";
 import { renderPillarsTab } from "./pillars.js";
 import { renderUsersAdmin } from "./users-admin.js";
+import { renderClientWorkspace, cleanupWorkspace } from "./workspace.js";
 import { confirmDialog } from "./modal.js";
 
 // ============ INIT ============
@@ -128,7 +129,15 @@ function renderAuthenticated(user) {
   activateTab(startTab);
 }
 
+let currentActiveTab = null;
+
 async function activateTab(tab) {
+  // Cleanup leaving tab (currently only workspace has subscriptions)
+  if (currentActiveTab === "workspace" && tab !== "workspace") {
+    cleanupWorkspace();
+  }
+  currentActiveTab = tab;
+
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("tab--active", t.dataset.tab === tab));
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("tab-panel--active", p.id === `panel-${tab}`));
 
@@ -162,81 +171,8 @@ function renderPendingAccount(panel) {
   `;
 }
 
-// ============ CLIENT WORKSPACE (read-only view for realtor) ============
-async function renderClientWorkspace(panel) {
-  const user = getCurrentUser();
-  if (!user) return;
-
-  if (!user.linkedClientId) {
-    panel.innerHTML = `
-      <div class="panel-header">
-        <h2>Mi Workspace</h2>
-        <p class="subtitle">Tu cuenta aún no está vinculada a un cliente.</p>
-      </div>
-      <div class="empty-state">
-        <p>📋 Tu cuenta está creada pero todavía no tenés un cliente asignado.</p>
-        <p class="muted">Contactá a tu operador (Damian o Oscar) para que vincule tu cuenta a tu workspace de realtor.</p>
-        <p class="muted">Tu UID: <code>${user.uid}</code></p>
-      </div>
-    `;
-    return;
-  }
-
-  // Load client + their outputs
-  const dbMod = await import("./db.js");
-  const clientRes = await dbMod.getClient(user.linkedClientId);
-  if (!clientRes.ok) {
-    panel.innerHTML = `
-      <div class="panel-header"><h2>Mi Workspace</h2></div>
-      <div class="empty-state">
-        <p>No pude cargar tu cliente vinculado (ID: <code>${user.linkedClientId}</code>).</p>
-        <p class="muted">Razón: ${clientRes.error}</p>
-      </div>
-    `;
-    return;
-  }
-
-  const client = clientRes.client;
-  const outputsRes = await dbMod.listOutputs(client.id);
-  const outputs = outputsRes.outputs || [];
-
-  panel.innerHTML = `
-    <div class="panel-header">
-      <h2>👋 Hola, ${escape(client.brief?.realtor?.full_name || "Realtor")}</h2>
-      <p class="subtitle">${escape(client.brief?.realtor?.geo_zone || "")}</p>
-    </div>
-
-    <div class="workspace-grid">
-      <div class="workspace-card">
-        <h3>📊 Estado</h3>
-        <p><strong>Pilares activos:</strong> ${Object.values(client.brief?.activation?.pillars_active || {}).filter(Boolean).length}/6</p>
-        <p><strong>Localización:</strong> ${client.brief?.activation?.localization?.language?.replace("lang-","")} · ${client.brief?.activation?.localization?.nationality?.replace("nat-es-","") || "generic"} · ${client.brief?.activation?.localization?.tone?.replace("tone-","")}</p>
-      </div>
-
-      <div class="workspace-card">
-        <h3>📄 Tus deliverables</h3>
-        ${outputs.length === 0 ? `
-          <p class="muted">Aún no hay deliverables generados. Tu operador está trabajando en ellos.</p>
-        ` : `
-          <ul class="workspace-outputs">
-            ${outputs.map(o => `
-              <li>
-                <strong>${escape(o.pillar_key.replace("pillar_", "").toUpperCase())}</strong>
-                <span class="qa-badge qa-badge--${o.qa_status === "PASS" ? "pass" : "fail"}">${o.qa_status || "pending"}</span>
-                <span class="muted">${formatDate(o.generated_at)}</span>
-                <button class="btn btn--ghost" data-action="view" data-pillar="${o.pillar_key}">Ver / Editar</button>
-              </li>
-            `).join("")}
-          </ul>
-        `}
-      </div>
-    </div>
-
-    <div class="alert alert--orange-soft" style="margin-top:20px">
-      🚧 <strong>Editor in-app:</strong> próximamente vas a poder editar cada deliverable directamente acá · sin tener que volver a Damian. (Turn 6c)
-    </div>
-  `;
-}
+// renderClientWorkspace lives in workspace.js (Turn 6b)
+// renderPendingAccount + roleBadgeForPill + escape stay here below
 
 // ============ HELPERS ============
 function roleBadgeForPill(role) {
@@ -249,9 +185,4 @@ function roleBadgeForPill(role) {
 function escape(s) {
   if (s === null || s === undefined) return "";
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-function formatDate(iso) {
-  if (!iso) return "—";
-  try { return new Date(iso).toLocaleString("es"); } catch { return iso; }
 }

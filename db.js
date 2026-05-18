@@ -13,7 +13,10 @@ import {
   deleteDoc,
   query,
   orderBy,
-  serverTimestamp
+  updateDoc,
+  onSnapshot,
+  serverTimestamp,
+  arrayUnion
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const LS_KEY = "trident_os_clients_v1";
@@ -132,6 +135,9 @@ export async function deleteClient(id) {
 
 export async function saveOutput(clientId, pillarKey, output) {
   output.updated_at = new Date().toISOString();
+  // Initialize approval workflow fields if not set · default "draft" right after generation
+  if (!output.approval_status) output.approval_status = "draft";
+  if (!output.approval_history) output.approval_history = [];
   saveOutputLocal(clientId, pillarKey, output);
 
   if (firebaseReady) {
@@ -146,6 +152,77 @@ export async function saveOutput(clientId, pillarKey, output) {
     }
   }
   return { ok: true, mode: "localStorage" };
+}
+
+// Update approval workflow status of an output
+// Valid transitions: draft → in-edit, draft → approved, in-edit → approved, approved → downloaded
+export async function updateOutputApproval(clientId, pillarKey, newStatus, { actorUid, actorRole, notes } = {}) {
+  const validStatuses = ["draft", "in-edit", "approved", "downloaded"];
+  if (!validStatuses.includes(newStatus)) {
+    return { ok: false, error: `Invalid approval status: ${newStatus}` };
+  }
+
+  const historyEntry = {
+    status: newStatus,
+    at: new Date().toISOString(),
+    actor_uid: actorUid || null,
+    actor_role: actorRole || null,
+    notes: notes || null
+  };
+
+  // Local update first (cache)
+  const all = listOutputsLocal(clientId);
+  const idx = all.findIndex(o => o.pillar_key === pillarKey);
+  if (idx >= 0) {
+    all[idx].approval_status = newStatus;
+    all[idx].approval_history = [...(all[idx].approval_history || []), historyEntry];
+    all[idx].updated_at = historyEntry.at;
+    localStorage.setItem(lsOutputsKey(clientId), JSON.stringify(all));
+  }
+
+  if (firebaseReady) {
+    try {
+      const ref = doc(db, "clients", clientId, "outputs", pillarKey);
+      await updateDoc(ref, {
+        approval_status: newStatus,
+        approval_history: arrayUnion(historyEntry),
+        updated_at: historyEntry.at,
+        _server_updated: serverTimestamp()
+      });
+      return { ok: true, mode: "firestore", newStatus };
+    } catch (err) {
+      console.warn(`[db] updateOutputApproval firestore failed · ${err.message}`);
+      lastError = err;
+      return { ok: true, mode: "localStorage", warn: err.message, newStatus };
+    }
+  }
+  return { ok: true, mode: "localStorage", newStatus };
+}
+
+// Real-time listener on the outputs subcollection of a client
+// Returns an unsubscribe function · client must call it on cleanup
+export function subscribeToOutputs(clientId, callback) {
+  if (!firebaseReady) {
+    // Fallback: poll localStorage every 3s (no real-time but at least respond to local writes)
+    const interval = setInterval(() => callback(listOutputsLocal(clientId)), 3000);
+    callback(listOutputsLocal(clientId));
+    return () => clearInterval(interval);
+  }
+  try {
+    const ref = collection(db, "clients", clientId, "outputs");
+    const unsub = onSnapshot(ref, (snap) => {
+      const outputs = snap.docs.map(d => ({ ...d.data(), pillar_key: d.id }));
+      // Refresh local cache
+      saveOutputsLocalAll(clientId, outputs);
+      callback(outputs);
+    }, (err) => {
+      console.warn(`[db] subscribeToOutputs error · ${err.message}`);
+    });
+    return unsub;
+  } catch (err) {
+    console.warn(`[db] subscribeToOutputs setup failed · ${err.message}`);
+    return () => {};
+  }
 }
 
 export async function listOutputs(clientId) {

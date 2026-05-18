@@ -1,11 +1,13 @@
 // pillars.js — Tab Pilares: selector de cliente · ejecución pilar · render output
 // Turn 3 deliverable. Conecta context-builder + gemini + output-storage.
+// Turn 6b: refactor output modal a output-viewer.js compartido (con workspace.js)
 
 import { listClients, saveOutput, listOutputs } from "./db.js";
 import { buildContext, loadSkillsOnce } from "./context-builder.js";
 import { generateStream } from "./gemini.js";
 import { validateOutput, buildCorrectionPrompt } from "./qa-validator.js";
 import { PILLAR_META } from "./brief-schema.js";
+import { showOutputViewer } from "./output-viewer.js";
 
 const MAX_QA_CYCLES = 3;
 
@@ -290,204 +292,13 @@ async function viewOutput(pillarKey, outputObj = null) {
   }
   if (!output) return alert("No hay output guardado para este pilar.");
 
-  const meta = PILLAR_META[pillarKey];
-  const qaBadge = output.qa_status === "PASS"
-    ? `<span class="qa-badge qa-badge--pass">✓ QA PASS · ${output.qa_cycles_used || 1} ciclo${(output.qa_cycles_used || 1) === 1 ? "" : "s"}</span>`
-    : output.qa_status === "FAIL"
-      ? `<span class="qa-badge qa-badge--fail">⚠ QA FAIL · ${output.qa_violations?.length || 0} violaciones</span>`
-      : `<span class="qa-badge">QA pending</span>`;
-
-  const backdrop = document.createElement("div");
-  backdrop.className = "modal-backdrop";
-  backdrop.innerHTML = `
-    <div class="modal modal--wide">
-      <div class="modal-header">
-        <div>
-          <strong>Pilar ${meta.num} · ${meta.name}</strong>
-          ${qaBadge}
-          <span class="muted" style="margin-left:8px">${formatDate(output.generated_at)} · ${output.meta?.usage?.total_across_cycles?.tokens?.toLocaleString() || output.meta?.usage?.totalTokens?.toLocaleString() || "?"} tokens</span>
-        </div>
-        <button class="modal-close">×</button>
-      </div>
-      <div class="modal-tabs">
-        <button class="modal-tab modal-tab--active" data-modal-tab="output">Output</button>
-        <button class="modal-tab" data-modal-tab="qa">QA Result</button>
-        <button class="modal-tab" data-modal-tab="meta">Meta</button>
-        <button class="modal-tab" data-modal-tab="raw">Raw</button>
-      </div>
-      <div class="modal-body modal-body--rich" data-tab-content="output"></div>
-      <div class="modal-body" data-tab-content="qa" hidden></div>
-      <div class="modal-body modal-body--code" data-tab-content="meta" hidden>${escape(JSON.stringify(output.meta, null, 2))}</div>
-      <div class="modal-body modal-body--code" data-tab-content="raw" hidden></div>
-      <div class="modal-footer">
-        <button class="btn btn--ghost" id="btn-copy-output">Copiar markdown</button>
-        <button class="btn btn--ghost" id="btn-download-md">Descargar .md</button>
-        <button class="btn btn--primary" id="btn-download-docx">Descargar .docx</button>
-      </div>
-    </div>
-  `;
-
-  const outBody = backdrop.querySelector("[data-tab-content='output']");
-  outBody.innerHTML = renderMarkdown(output.content);
-  backdrop.querySelector("[data-tab-content='raw']").textContent = output.content;
-  backdrop.querySelector("[data-tab-content='qa']").innerHTML = renderQAResult(output);
-
-  // Tabs
-  backdrop.querySelectorAll(".modal-tab").forEach(t => {
-    t.addEventListener("click", () => {
-      backdrop.querySelectorAll(".modal-tab").forEach(x => x.classList.remove("modal-tab--active"));
-      t.classList.add("modal-tab--active");
-      backdrop.querySelectorAll("[data-tab-content]").forEach(c => c.hidden = c.dataset.tabContent !== t.dataset.modalTab);
-    });
+  // Delegate to the shared modal · operator mode shows full QA + Meta + Raw + .md download
+  showOutputViewer({
+    output,
+    client: currentClient,
+    mode: "operator",
+    onApprovalChange: () => updatePillarCards()
   });
-
-  // Close
-  backdrop.addEventListener("click", e => {
-    if (e.target === backdrop || e.target.classList.contains("modal-close")) backdrop.remove();
-  });
-
-  // Copy
-  backdrop.querySelector("#btn-copy-output").addEventListener("click", () => {
-    navigator.clipboard.writeText(output.content);
-    notify("Markdown copiado al clipboard");
-  });
-
-  // Download .md
-  backdrop.querySelector("#btn-download-md").addEventListener("click", () => {
-    const blob = new Blob([output.content], { type: "text/markdown" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `${currentClient.id}_${pillarKey}_${output.generated_at.substring(0,10)}.md`;
-    a.click();
-  });
-
-  // Download .docx
-  backdrop.querySelector("#btn-download-docx").addEventListener("click", () => {
-    downloadDocx(output, pillarKey, meta);
-  });
-
-  document.body.appendChild(backdrop);
-}
-
-// ============ RENDER QA RESULT ============
-function renderQAResult(output) {
-  const layers = output.qa_layers || {};
-  const violations = output.qa_violations || [];
-  const history = output.qa_history || [];
-
-  const renderLayer = (key, title) => {
-    const l = layers[key] || {};
-    if (l.skipped) return `<div class="qa-layer qa-layer--skipped"><strong>${title}</strong> · ⏭ Saltada (${l.reason || ""})</div>`;
-    const status = (l.items_failed || 0) === 0 ? "qa-layer--pass" : "qa-layer--fail";
-    return `
-      <div class="qa-layer ${status}">
-        <strong>${title}</strong> · ${l.items_validated || 0} validados · ${l.items_failed || 0} fallos
-        ${l.detail ? `<ul class="qa-detail">${l.detail.map(d => `<li>${escape(d)}</li>`).join("")}</ul>` : ""}
-      </div>
-    `;
-  };
-
-  const renderViolation = v => `
-    <div class="qa-violation qa-violation--${v.severity?.toLowerCase() || "high"}">
-      <div class="qa-violation__head">
-        <strong>${v.rule_id} · ${escape(v.rule_name || "")}</strong>
-        <span class="qa-violation__layer">layer ${v.layer || "?"}</span>
-        <span class="qa-violation__sev">${v.severity || "?"}</span>
-      </div>
-      ${v.violated_fragment ? `<div class="qa-violation__frag"><em>Fragment:</em> ${escape(v.violated_fragment).substring(0,300)}</div>` : ""}
-      <div class="qa-violation__fix"><em>Fix:</em> ${escape(v.correction_suggestion || "")}</div>
-    </div>
-  `;
-
-  return `
-    <div class="qa-summary">
-      <strong>Resultado:</strong> ${output.qa_status === "PASS" ? "✓ PASS" : "⚠ FAIL"} ·
-      Ciclos usados: ${output.qa_cycles_used || 1} / ${output.qa_max_cycles || 3}
-    </div>
-
-    ${renderLayer("layer_1_blocking",   "Layer 1 · Blocking (programmatic)")}
-    ${renderLayer("layer_2_format",     "Layer 2 · Format (programmatic)")}
-    ${renderLayer("layer_3_contextual", "Layer 3 · Contextual (AI · Gemini)")}
-
-    ${violations.length > 0 ? `
-      <h3 style="margin-top:20px">Violaciones detectadas (${violations.length})</h3>
-      ${violations.map(renderViolation).join("")}
-    ` : `<div class="qa-clean">🎉 Sin violaciones detectadas en ningún layer.</div>`}
-
-    ${history.length > 1 ? `
-      <h3 style="margin-top:20px">Historial de ciclos</h3>
-      <table class="qa-history-table">
-        <thead><tr><th>Ciclo</th><th>QA</th><th>Violaciones</th><th>IDs</th></tr></thead>
-        <tbody>
-          ${history.map(h => `
-            <tr>
-              <td>${h.cycle}</td>
-              <td><span class="qa-pill qa-pill--${h.qa.toLowerCase()}">${h.qa}</span></td>
-              <td>${h.violations}</td>
-              <td class="muted">${h.violation_ids.join(" · ") || "—"}</td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    ` : ""}
-  `;
-}
-
-// ============ DOWNLOAD .docx (uses html-docx-js loaded via CDN) ============
-function downloadDocx(output, pillarKey, meta) {
-  if (typeof window.htmlDocx === "undefined") {
-    notify("⚠ html-docx-js no cargó · descargando como .html en su lugar");
-    downloadAsHtml(output, pillarKey);
-    return;
-  }
-  const fullHtml = buildDocxHtml(output, pillarKey, meta);
-  const blob = window.htmlDocx.asBlob(fullHtml);
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `${currentClient.id}_${pillarKey}_${output.generated_at.substring(0,10)}.docx`;
-  a.click();
-  notify(".docx descargado");
-}
-
-function downloadAsHtml(output, pillarKey) {
-  const fullHtml = buildDocxHtml(output, pillarKey, PILLAR_META[pillarKey]);
-  const blob = new Blob([fullHtml], { type: "application/msword" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `${currentClient.id}_${pillarKey}_${output.generated_at.substring(0,10)}.doc`;
-  a.click();
-}
-
-function buildDocxHtml(output, pillarKey, meta) {
-  const css = `
-    body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; font-size: 12pt; line-height: 1.5; color: #111827; }
-    h1 { color: #0F1B2D; font-size: 22pt; border-bottom: 3px solid #E86A1E; padding-bottom: 6pt; margin-top: 0; }
-    h2 { color: #0F1B2D; font-size: 16pt; margin-top: 18pt; border-bottom: 1px solid #DDE2EA; padding-bottom: 4pt; }
-    h3 { color: #E86A1E; font-size: 13pt; margin-top: 14pt; }
-    p  { margin: 6pt 0; }
-    ul, ol { margin-left: 24pt; }
-    code { background: #EEF1F5; padding: 1pt 5pt; font-family: "Courier New", monospace; font-size: 11pt; }
-    .header-block { border-left: 4pt solid #E86A1E; padding-left: 12pt; margin-bottom: 24pt; }
-    .footer { margin-top: 36pt; padding-top: 12pt; border-top: 1px solid #DDE2EA; font-size: 10pt; color: #6B7280; }
-  `;
-  const clientName = currentClient.brief?.realtor?.full_name || currentClient.id;
-  const headerBlock = `
-    <div class="header-block">
-      <h1>Pilar ${meta.num} · ${meta.name}</h1>
-      <p><strong>Cliente:</strong> ${escape(clientName)}<br>
-      <strong>Generado:</strong> ${formatDate(output.generated_at)}<br>
-      <strong>QA Status:</strong> ${output.qa_status} (${output.qa_cycles_used || 1} ciclos)<br>
-      <strong>Trident OS v3</strong> · Capitán del Marketing</p>
-    </div>
-  `;
-  const body = renderMarkdown(output.content);
-  const footer = `
-    <div class="footer">
-      QUWWA LLC dba Capitán del Marketing · New Mexico · USA<br>
-      Generado por Trident OS v3 con Gemini · context cascade ${output.meta?.skillCount || "?"} skills · ${output.meta?.usage?.total_across_cycles?.tokens?.toLocaleString() || output.meta?.usage?.totalTokens?.toLocaleString() || "?"} tokens totales
-    </div>
-  `;
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${css}</style></head><body>${headerBlock}${body}${footer}</body></html>`;
 }
 
 // ============ PROGRESS MODAL ============
@@ -550,21 +361,6 @@ function closeProgressModal() {
 }
 
 // ============ HELPERS ============
-function renderMarkdown(md) {
-  // Minimal markdown → HTML (headings, bold, italic, code, lists, paragraphs)
-  return md
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/^- (.+)$/gm, "<li>$1</li>")
-    .replace(/(<li>.*<\/li>\n?)+/g, m => "<ul>" + m + "</ul>")
-    .split(/\n\n+/).map(p => p.match(/^<(h\d|ul|ol|pre|table)/) ? p : `<p>${p}</p>`).join("\n");
-}
-
 function escape(s) {
   if (s === null || s === undefined) return "";
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -573,13 +369,4 @@ function escape(s) {
 function formatDate(iso) {
   if (!iso) return "—";
   try { return new Date(iso).toLocaleString("es"); } catch { return iso; }
-}
-
-function notify(msg) {
-  const n = document.createElement("div");
-  n.className = "toast";
-  n.textContent = msg;
-  document.body.appendChild(n);
-  setTimeout(() => n.classList.add("toast--show"), 10);
-  setTimeout(() => { n.classList.remove("toast--show"); setTimeout(() => n.remove(), 300); }, 3000);
 }
