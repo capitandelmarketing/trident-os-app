@@ -2023,6 +2023,57 @@ main {
   white-space: pre-wrap;
 }
 
+/* CSV multi-row selector (Turn 6h.1) */
+.importer-csv-selector {
+  margin-top: 14px;
+  border: 1px solid var(--capitan-orange);
+  border-radius: 8px;
+  background: var(--capitan-orange-light);
+  overflow: hidden;
+}
+.csv-selector-header {
+  padding: 12px 16px;
+  background: var(--capitan-orange);
+  color: white;
+  font-size: 13px;
+}
+.csv-selector-list {
+  max-height: 280px;
+  overflow-y: auto;
+  background: white;
+}
+.csv-row-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--gray-100);
+  cursor: pointer;
+  transition: background .12s;
+}
+.csv-row-option:last-child { border-bottom: 0; }
+.csv-row-option:hover { background: var(--gray-50); }
+.csv-row-option input[type=radio] {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+.csv-row-content {
+  flex: 1;
+  min-width: 0;
+}
+.csv-row-content strong {
+  display: block;
+  font-size: 13px;
+  color: var(--gray-900);
+  margin-bottom: 2px;
+}
+.csv-row-content p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
 /* Progress spinner during AI extraction */
 .importer-progress {
   margin-top: 18px;

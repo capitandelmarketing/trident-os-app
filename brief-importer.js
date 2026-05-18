@@ -24,7 +24,8 @@ export function openBriefImporter(opts) {
 
       <div class="modal-body modal-body--importer" id="importer-body">
         <p class="importer-intro">
-          La IA va a leer tu brief (en cualquier formato libre) y autocompletar el wizard con los 35 campos del cliente.
+          La IA va a leer tu brief (en cualquier formato) y autocompletar el wizard con los 35 campos del cliente.
+          Acepta <strong>.md · .txt · .json · .csv · .docx · .pdf</strong> · si tu CSV tiene varios briefs, te muestra selector para elegir cuál importar.
           Después podés revisar y ajustar antes de guardar.
         </p>
 
@@ -52,11 +53,12 @@ Programas DPA: Florida Hometown Heroes hasta $35K cred 640..."
               <p><strong>Arrastrá un archivo aquí</strong></p>
               <p class="muted">o</p>
               <button class="btn btn--ghost" id="importer-pick-file">Elegir archivo</button>
-              <input type="file" id="importer-file-input" accept=".md,.txt,.json,.markdown" hidden>
-              <p class="muted importer-formats">Formatos: .md · .txt · .json · .markdown</p>
+              <input type="file" id="importer-file-input" accept=".md,.markdown,.txt,.json,.csv,.docx,.pdf,.tsv" hidden>
+              <p class="muted importer-formats">Formatos: .md · .txt · .json · .csv · .docx · .pdf · .tsv</p>
             </div>
           </div>
           <div class="importer-file-preview" id="importer-file-preview" hidden></div>
+          <div class="importer-csv-selector" id="importer-csv-selector" hidden></div>
         </div>
 
         <div class="importer-progress" id="importer-progress" hidden>
@@ -101,28 +103,174 @@ Programas DPA: Florida Hometown Heroes hasta $35K cred 640..."
 
   pickFileBtn.addEventListener("click", () => fileInput.click());
 
+  const csvSelector = backdrop.querySelector("#importer-csv-selector");
+
   const handleFile = async (file) => {
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      window.notifyInfo?.(`Archivo muy grande (${(file.size/1024/1024).toFixed(1)}MB · máx 5MB)`, "attention");
+    if (file.size > 10 * 1024 * 1024) {
+      window.notifyInfo?.(`Archivo muy grande (${(file.size/1024/1024).toFixed(1)}MB · máx 10MB)`, "attention");
       return;
     }
+
+    // Reset state
+    csvSelector.hidden = true;
+    csvSelector.innerHTML = "";
+    filePreview.hidden = true;
+    backdrop.querySelector("#importer-extract").disabled = true;
+
+    const ext = (file.name.split(".").pop() || "").toLowerCase();
+    const fileInfo = `<span>📄 <strong>${escape(file.name)}</strong></span><span class="muted">${(file.size/1024).toFixed(1)} KB · ${ext.toUpperCase()}</span>`;
+
     try {
-      const text = await file.text();
-      currentText = text.trim();
+      let parsed = null;
+
+      if (["md", "markdown", "txt", "json"].includes(ext)) {
+        // Plain text · read directly
+        parsed = { kind: "text", text: (await file.text()).trim() };
+
+      } else if (ext === "csv" || ext === "tsv") {
+        // CSV/TSV via Papa Parse · may contain multiple briefs
+        if (typeof window.Papa === "undefined") throw new Error("Papa Parse no cargó (revisar CDN)");
+        const text = await file.text();
+        const result = window.Papa.parse(text, {
+          header: true,
+          skipEmptyLines: true,
+          delimiter: ext === "tsv" ? "\t" : "",  // empty = auto-detect
+          dynamicTyping: false
+        });
+        if (result.errors.length > 0 && result.data.length === 0) {
+          throw new Error(`CSV parse error: ${result.errors[0].message}`);
+        }
+        const rows = result.data.filter(r => Object.values(r).some(v => String(v || "").trim() !== ""));
+        if (rows.length === 0) throw new Error("CSV vacío o sin filas con datos");
+        parsed = { kind: "csv", rows, headers: result.meta.fields };
+
+      } else if (ext === "docx") {
+        // DOCX via mammoth.js
+        if (typeof window.mammoth === "undefined") throw new Error("mammoth.js no cargó (revisar CDN)");
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await window.mammoth.extractRawText({ arrayBuffer });
+        if (result.messages?.length > 0) {
+          console.warn("[importer] mammoth warnings:", result.messages);
+        }
+        parsed = { kind: "text", text: (result.value || "").trim() };
+
+      } else if (ext === "pdf") {
+        // PDF via pdf.js
+        if (typeof window.pdfjsLib === "undefined") throw new Error("pdf.js no cargó (revisar CDN)");
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const allText = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const pageText = content.items.map(item => item.str).join(" ");
+          allText.push(`--- Página ${i} ---\n${pageText}`);
+        }
+        parsed = { kind: "text", text: allText.join("\n\n").trim() };
+
+      } else {
+        throw new Error(`Formato no soportado: .${ext} · usá .md, .txt, .json, .csv, .docx o .pdf`);
+      }
+
+      // Show file info preview
       filePreview.hidden = false;
-      filePreview.innerHTML = `
-        <div class="file-info">
-          <span>📄 <strong>${escape(file.name)}</strong></span>
-          <span class="muted">${(file.size/1024).toFixed(1)} KB · ${currentText.length.toLocaleString()} caracteres</span>
-        </div>
-        <pre class="file-preview-text">${escape(currentText.slice(0, 600))}${currentText.length > 600 ? "\n…" : ""}</pre>
-      `;
-      backdrop.querySelector("#importer-extract").disabled = currentText.length < 50;
+
+      if (parsed.kind === "text") {
+        currentText = parsed.text;
+        filePreview.innerHTML = `
+          <div class="file-info">${fileInfo}<span class="muted">${currentText.length.toLocaleString()} caracteres</span></div>
+          <pre class="file-preview-text">${escape(currentText.slice(0, 600))}${currentText.length > 600 ? "\n…" : ""}</pre>
+        `;
+        backdrop.querySelector("#importer-extract").disabled = currentText.length < 50;
+
+      } else if (parsed.kind === "csv") {
+        filePreview.innerHTML = `
+          <div class="file-info">${fileInfo}<span class="muted">${parsed.rows.length} fila${parsed.rows.length === 1 ? "" : "s"} · ${parsed.headers.length} columnas</span></div>
+        `;
+
+        if (parsed.rows.length === 1) {
+          // Single row · convert and use directly
+          currentText = csvRowToQA(parsed.rows[0]);
+          backdrop.querySelector("#importer-extract").disabled = false;
+        } else {
+          // Multiple rows · show selector
+          csvSelector.hidden = false;
+          csvSelector.innerHTML = `
+            <div class="csv-selector-header">
+              <strong>Tu CSV tiene ${parsed.rows.length} briefs.</strong> ¿Cuál querés importar?
+            </div>
+            <div class="csv-selector-list">
+              ${parsed.rows.map((row, idx) => {
+                const name = guessName(row);
+                const preview = previewRow(row);
+                return `
+                  <label class="csv-row-option">
+                    <input type="radio" name="csv-row" value="${idx}" ${idx === 0 ? "checked" : ""}>
+                    <div class="csv-row-content">
+                      <strong>${escape(name)}</strong>
+                      <p class="muted">${escape(preview)}</p>
+                    </div>
+                  </label>
+                `;
+              }).join("")}
+            </div>
+          `;
+          // Wire radio change to update currentText
+          const updateFromSelection = () => {
+            const checked = csvSelector.querySelector("input[name=csv-row]:checked");
+            if (!checked) return;
+            const row = parsed.rows[parseInt(checked.value, 10)];
+            currentText = csvRowToQA(row);
+            backdrop.querySelector("#importer-extract").disabled = currentText.length < 50;
+          };
+          csvSelector.querySelectorAll("input[name=csv-row]").forEach(r => {
+            r.addEventListener("change", updateFromSelection);
+          });
+          updateFromSelection();  // initial
+        }
+      }
     } catch (err) {
       window.notifyInfo?.(`Error leyendo archivo: ${err.message}`, "attention");
+      filePreview.hidden = false;
+      filePreview.innerHTML = `<div class="alert alert--error">⚠ ${escape(err.message)}</div>`;
     }
   };
+
+  // Convert a CSV row (object) to "Pregunta: ... · Respuesta: ..." text · Gemini parses better
+  function csvRowToQA(row) {
+    return Object.entries(row)
+      .filter(([k, v]) => k && String(v || "").trim() !== "")
+      .map(([k, v]) => `${k.trim()}: ${String(v).trim()}`)
+      .join("\n\n");
+  }
+
+  // Try to guess a human-readable name for a CSV row (for the selector)
+  function guessName(row) {
+    const nameKeys = Object.keys(row).filter(k => /name|nombre/i.test(k));
+    for (const k of nameKeys) {
+      const v = String(row[k] || "").trim();
+      if (v && v.length < 60) return v;
+    }
+    // Fallback: first non-empty value
+    const firstVal = Object.values(row).find(v => String(v || "").trim());
+    return firstVal ? String(firstVal).slice(0, 50) : "(sin nombre)";
+  }
+
+  // Preview a row for the selector · show email, zone, brokerage if available
+  function previewRow(row) {
+    const interesting = ["email", "brokerage", "zona", "city", "ciudad", "phone", "teléfono", "telefono", "whatsapp"];
+    const parts = [];
+    for (const key of Object.keys(row)) {
+      const lc = key.toLowerCase();
+      if (interesting.some(t => lc.includes(t))) {
+        const val = String(row[key] || "").trim();
+        if (val && val.length < 80) parts.push(val);
+        if (parts.length >= 3) break;
+      }
+    }
+    return parts.join(" · ") || "(sin preview)";
+  }
 
   fileInput.addEventListener("change", e => handleFile(e.target.files[0]));
 
@@ -219,11 +367,28 @@ ${briefText.slice(0, 50000)}`;
 
   onProgress?.("Llamando Gemini 2.5-flash…");
 
-  const result = await generate(prompt, {
-    temperature: 0.2,         // low temp · structured extraction
-    maxOutputTokens: 8192,
-    thinkingBudget: 0
-  });
+  // Retry on transient errors (503/429) · Gemini frequently rate-limits or has demand spikes
+  let result = null;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      result = await generate(prompt, {
+        temperature: 0.2,
+        maxOutputTokens: 8192,
+        thinkingBudget: 0
+      });
+      break;
+    } catch (err) {
+      lastErr = err;
+      const msg = err.message || "";
+      const isTransient = /\b503\b|\b429\b|UNAVAILABLE|RESOURCE_EXHAUSTED|temporary|high demand/i.test(msg);
+      if (!isTransient || attempt === 3) throw err;
+      const delayMs = 1500 * attempt;
+      onProgress?.(`Gemini saturado · reintento ${attempt}/3 en ${delayMs/1000}s…`);
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+  if (!result) throw lastErr || new Error("Gemini failed after 3 retries");
 
   onProgress?.("Parsing JSON respuesta…");
 
@@ -271,6 +436,26 @@ ${briefByLine}
 }`.trim();
 }
 
+// Coerce any value (string, number, array, object) to a clean string · avoids "[object Object]"
+function toStr(val) {
+  if (val === null || val === undefined) return "";
+  if (typeof val === "string") return val.trim();
+  if (typeof val === "number" || typeof val === "boolean") return String(val);
+  if (Array.isArray(val)) {
+    // Array of primitives → comma-separated · array of objects → newline-separated JSON-ish
+    return val.map(item => {
+      if (typeof item === "object" && item !== null) {
+        return Object.entries(item).map(([k, v]) => `${k}: ${toStr(v)}`).join(" · ");
+      }
+      return String(item);
+    }).join("\n");
+  }
+  if (typeof val === "object") {
+    return Object.entries(val).map(([k, v]) => `${k}: ${toStr(v)}`).join("\n");
+  }
+  return String(val);
+}
+
 function validateAndAnnotate(parsed) {
   const out = { official_data: {}, brief: { realtor: {}, avatar: {}, data: {}, activation: {} } };
   const issues = [];
@@ -278,10 +463,8 @@ function validateAndAnnotate(parsed) {
   // ============ official_data
   if (parsed.official_data) {
     OFFICIAL_DATA_FIELDS.forEach(f => {
-      const val = parsed.official_data[f.id];
-      if (val !== undefined && val !== null && String(val).trim() !== "") {
-        out.official_data[f.id] = String(val);
-      }
+      const str = toStr(parsed.official_data[f.id]);
+      if (str !== "") out.official_data[f.id] = str;
     });
   }
 
@@ -289,33 +472,30 @@ function validateAndAnnotate(parsed) {
   if (parsed.brief) {
     // realtor (10)
     BRIEF_INPUTS.filter(i => i.section === "realtor").forEach(i => {
-      const val = parsed.brief.realtor?.[i.id];
-      if (val !== undefined && val !== null && String(val).trim() !== "") {
-        out.brief.realtor[i.id] = String(val);
-      }
+      const str = toStr(parsed.brief.realtor?.[i.id]);
+      if (str !== "") out.brief.realtor[i.id] = str;
     });
     // avatar (4)
     BRIEF_INPUTS.filter(i => i.section === "avatar").forEach(i => {
       const val = parsed.brief.avatar?.[i.id];
-      if (val !== undefined && val !== null && String(val).trim() !== "") {
+      const str = toStr(val);
+      if (str !== "") {
         if (i.id === "primary_avatar") {
-          const valid = i.options.includes(val);
+          const valid = i.options.includes(str);
           if (!valid) {
-            issues.push(`primary_avatar inválido "${val}" · valores válidos: ${i.options.join(", ")}`);
+            issues.push(`primary_avatar inválido "${str}" · valores válidos: ${i.options.join(", ")}`);
           } else {
-            out.brief.avatar.primary_avatar = val;
+            out.brief.avatar.primary_avatar = str;
           }
         } else {
-          out.brief.avatar[i.id] = String(val);
+          out.brief.avatar[i.id] = str;
         }
       }
     });
     // data (2)
     BRIEF_INPUTS.filter(i => i.section === "data").forEach(i => {
-      const val = parsed.brief.data?.[i.id];
-      if (val !== undefined && val !== null && String(val).trim() !== "") {
-        out.brief.data[i.id] = String(val);
-      }
+      const str = toStr(parsed.brief.data?.[i.id]);
+      if (str !== "") out.brief.data[i.id] = str;
     });
     // activation (localization + pillars)
     const loc = parsed.brief.activation?.localization || {};

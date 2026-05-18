@@ -26,6 +26,17 @@
   <link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
   <script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
 
+  <!-- Brief importer parsers (Turn 6h.1) · CSV/DOCX/PDF support -->
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://unpkg.com/mammoth@1.7.2/mammoth.browser.min.js"></script>
+  <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script>
+    // Configure pdf.js worker (required for pdf parsing)
+    if (window.pdfjsLib) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+    }
+  </script>
+
   <!-- notify-sound · sonido + toast + title flash cuando sistema necesita Damian -->
   <script src="notify-sound.js"></script>
 
