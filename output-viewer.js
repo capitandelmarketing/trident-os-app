@@ -5,6 +5,7 @@ import { updateOutputApproval } from "./db.js";
 import { getCurrentUser, isOperator, isClient } from "./auth.js";
 import { confirmDialog } from "./modal.js";
 import { PILLAR_META } from "./brief-schema.js";
+import { openOutputEditor } from "./output-editor.js";
 
 // Public entry · render modal
 // opts: { output, client, mode: "operator" | "client", onApprovalChange, onClose }
@@ -143,8 +144,9 @@ function renderActions(backdrop, output, client, mode, onApprovalChange) {
     });
 
   } else {
-    // Operator sees: copy / download .md / download .docx / mark approved-on-behalf-of-client
+    // Operator sees: edit / copy / download .md / download .docx / mark approved-on-behalf-of-client
     footer.innerHTML = `
+      <button class="btn btn--ghost" data-act="edit">✏️ Editar</button>
       <button class="btn btn--ghost" data-act="copy-md">Copiar markdown</button>
       <button class="btn btn--ghost" data-act="download-md">Descargar .md</button>
       <button class="btn btn--primary" data-act="download-docx">Descargar .docx</button>
@@ -152,6 +154,20 @@ function renderActions(backdrop, output, client, mode, onApprovalChange) {
         <button class="btn btn--ghost" data-act="approve-onbehalf">✓ Marcar aprobado</button>
       ` : ""}
     `;
+
+    footer.querySelector("[data-act='edit']").addEventListener("click", () => {
+      // Close the viewer first, then open the editor
+      backdrop.remove();
+      openOutputEditor({
+        output,
+        client,
+        onSaved: (updated) => {
+          // After save, re-open the viewer so operator sees the result
+          // The subscribeToOutputs in workspace.js will reflect changes on client side
+          onApprovalChange?.(updated.approval_status);
+        }
+      });
+    });
 
     footer.querySelector("[data-act='copy-md']").addEventListener("click", () => {
       navigator.clipboard.writeText(output.content || "");
