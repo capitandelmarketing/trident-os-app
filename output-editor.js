@@ -7,20 +7,25 @@ import { saveOutput, getClient } from "./db.js";
 import { getCurrentUser, isOperator } from "./auth.js";
 import { confirmDialog } from "./modal.js";
 import { PILLAR_META } from "./brief-schema.js";
+import { ensureEasyMDE } from "./lazy-loader.js";
 
 const AUTOSAVE_INTERVAL_MS = 30000;  // 30 seconds
 const UNSAVED_INDICATOR_DELAY_MS = 500;  // grace before marking dirty
 
 // Public entry · open the editor for a given output
 // opts: { output, client, onSaved, onCancel }
-export function openOutputEditor(opts) {
+export async function openOutputEditor(opts) {
   const { output, client, onSaved, onCancel } = opts;
   if (!isOperator()) {
     window.notifyInfo?.("Solo operadores pueden editar deliverables", "attention");
     return;
   }
-  if (typeof window.EasyMDE === "undefined") {
-    window.notifyInfo?.("⚠ EasyMDE no cargó · revisar conexión CDN", "attention");
+
+  // Lazy-load EasyMDE on first use (~500KB · only when operator opens editor)
+  try {
+    await ensureEasyMDE();
+  } catch (err) {
+    window.notifyInfo?.(`⚠ No pude cargar el editor: ${err.message}`, "attention");
     return;
   }
 

@@ -4,6 +4,7 @@
 
 import { generate } from "./gemini.js";
 import { OFFICIAL_DATA_FIELDS, BRIEF_INPUTS, LANGUAGES, NATIONALITIES, TONES } from "./brief-schema.js";
+import { ensurePapaParse, ensureMammoth, ensurePdfJs } from "./lazy-loader.js";
 
 // ============ PUBLIC API ============
 // opts: { onApply(extracted), onCancel }
@@ -130,9 +131,9 @@ Programas DPA: Florida Hometown Heroes hasta $35K cred 640..."
 
       } else if (ext === "csv" || ext === "tsv") {
         // CSV/TSV via Papa Parse · may contain multiple briefs
-        if (typeof window.Papa === "undefined") throw new Error("Papa Parse no cargó (revisar CDN)");
+        const Papa = await ensurePapaParse();
         const text = await file.text();
-        const result = window.Papa.parse(text, {
+        const result = Papa.parse(text, {
           header: true,
           skipEmptyLines: true,
           delimiter: ext === "tsv" ? "\t" : "",  // empty = auto-detect
@@ -147,9 +148,9 @@ Programas DPA: Florida Hometown Heroes hasta $35K cred 640..."
 
       } else if (ext === "docx") {
         // DOCX via mammoth.js
-        if (typeof window.mammoth === "undefined") throw new Error("mammoth.js no cargó (revisar CDN)");
+        const mammoth = await ensureMammoth();
         const arrayBuffer = await file.arrayBuffer();
-        const result = await window.mammoth.extractRawText({ arrayBuffer });
+        const result = await mammoth.extractRawText({ arrayBuffer });
         if (result.messages?.length > 0) {
           console.warn("[importer] mammoth warnings:", result.messages);
         }
@@ -157,9 +158,9 @@ Programas DPA: Florida Hometown Heroes hasta $35K cred 640..."
 
       } else if (ext === "pdf") {
         // PDF via pdf.js
-        if (typeof window.pdfjsLib === "undefined") throw new Error("pdf.js no cargó (revisar CDN)");
+        const pdfjsLib = await ensurePdfJs();
         const arrayBuffer = await file.arrayBuffer();
-        const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         const allText = [];
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);

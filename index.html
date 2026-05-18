@@ -19,25 +19,16 @@
   <script src="firebase-config.local.js?v=2" onerror="this.remove();" defer></script>
   <script src="firebase-config.js?v=2" defer></script>
 
-  <!-- html-docx-js · DOCX from HTML (no npm) -->
-  <script src="https://unpkg.com/html-docx-js@0.3.1/dist/html-docx.js"></script>
+  <!-- All heavy CDN libs are lazy-loaded on demand by their consumer modules ·
+       see lazy-loader.js. This keeps initial page load fast (~50KB instead of ~3MB).
+       Libs loaded only when needed:
+       - html-docx-js (~150KB) · cuando descargas un .docx
+       - easymde (~500KB) · cuando abrís el editor in-app
+       - papaparse (~50KB) · cuando subís un .csv
+       - mammoth (~600KB) · cuando subís un .docx
+       - pdf.js (~1.5MB) · cuando subís un .pdf -->
 
-  <!-- EasyMDE · markdown editor (Turn 6c · operator edits outputs in-app) -->
-  <link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
-  <script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
-
-  <!-- Brief importer parsers (Turn 6h.1) · CSV/DOCX/PDF support -->
-  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
-  <script src="https://unpkg.com/mammoth@1.7.2/mammoth.browser.min.js"></script>
-  <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-  <script>
-    // Configure pdf.js worker (required for pdf parsing)
-    if (window.pdfjsLib) {
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
-    }
-  </script>
-
-  <!-- notify-sound · sonido + toast + title flash cuando sistema necesita Damian -->
+  <!-- notify-sound · sonido + toast + title flash · liviano (~3KB) -->
   <script src="notify-sound.js"></script>
 
   <!-- App entrypoint (ES module) -->

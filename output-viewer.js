@@ -6,6 +6,7 @@ import { getCurrentUser, isOperator, isClient } from "./auth.js";
 import { confirmDialog } from "./modal.js";
 import { PILLAR_META } from "./brief-schema.js";
 import { openOutputEditor } from "./output-editor.js";
+import { ensureHtmlDocx } from "./lazy-loader.js";
 
 // Public entry · render modal
 // opts: { output, client, mode: "operator" | "client", onApprovalChange, onClose }
@@ -132,7 +133,7 @@ function renderActions(backdrop, output, client, mode, onApprovalChange) {
     });
 
     footer.querySelector("[data-act='download-docx']")?.addEventListener("click", async () => {
-      downloadDocx(output, client);
+      await downloadDocx(output, client);
       // Mark as downloaded (one-way · downloaded never reverts)
       if (output.approval_status === "approved") {
         await updateOutputApproval(client.id, output.pillar_key, "downloaded", {
@@ -304,15 +305,19 @@ function renderQAResult(output) {
 }
 
 // ============ DOWNLOAD .docx ============
-function downloadDocx(output, client) {
+async function downloadDocx(output, client) {
   const meta = PILLAR_META[output.pillar_key];
-  if (typeof window.htmlDocx === "undefined") {
+  // Lazy-load html-docx-js on first download (~150KB)
+  let htmlDocx;
+  try {
+    htmlDocx = await ensureHtmlDocx();
+  } catch (err) {
     window.notifyInfo?.("⚠ html-docx-js no cargó · descargando como .doc", "attention");
     downloadAsDoc(output, client, meta);
     return;
   }
   const fullHtml = buildDocxHtml(output, client, meta);
-  const blob = window.htmlDocx.asBlob(fullHtml);
+  const blob = htmlDocx.asBlob(fullHtml);
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = `${client.id}_${output.pillar_key}_${(output.generated_at || "").substring(0,10)}.docx`;
