@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trident OS v4 · Capitán del Marketing</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- App root · all renders happen here · scripts NEVER touched -->
+  <div id="app-root">
+    <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;color:#6B7280;font-family:system-ui,sans-serif">
+      Cargando Trident OS…
+    </div>
+  </div>
+
+  <!-- Config global (no-module · sets window.FIREBASE_CONFIG · window.GEMINI_API_KEY) -->
+  <script src="firebase-config.js"></script>
+
+  <!-- html-docx-js · DOCX from HTML (no npm) -->
+  <script src="https://unpkg.com/html-docx-js@0.3.1/dist/html-docx.js"></script>
+
+  <!-- notify-sound · sonido + toast + title flash cuando sistema necesita Damian -->
+  <script src="notify-sound.js"></script>
+
+  <!-- App entrypoint (ES module) -->
+  <script type="module" src="main.js"></script>
+</body>
+</html>

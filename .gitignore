@@ -1,0 +1,34 @@
+# Generated files
+skills.json
+
+# Secrets — never commit
+firebase-config.local.js
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+
+# Claude Code (si Damian crea worktrees/sessions dentro del repo)
+.claude/worktrees/
+.claude/projects/
+.claude/launch.json
+
+# Python build artifacts
+__pycache__/
+*.pyc
+
+# Node (no usamos pero por las dudas)
+node_modules/
+dist/
+build/

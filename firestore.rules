@@ -1,0 +1,38 @@
+rules_version = '2';
+
+// Trident OS v3 — Firestore Security Rules
+// MVP rules · allow read/write to anyone (Fase 2: agregar Auth)
+// Para deploy: copiar todo este contenido y pegarlo en Firebase Console
+//   → Firestore Database → tab "Reglas" (Rules) → Publicar
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users collection (Turn 6 · Auth) — user profiles with role + linkedClientId
+    match /users/{userId} {
+      allow read, write: if true;
+      // FUTURE Fase 2: tighten to `if request.auth != null && request.auth.uid == userId`
+      // (require auth + only own profile)
+    }
+
+    // Clients collection — operadores Capitán crean/leen/actualizan
+    match /clients/{clientId} {
+      allow read, write: if true;
+    }
+
+    // Outputs subcollection per client
+    match /clients/{clientId}/outputs/{outputId} {
+      allow read, write: if true;
+    }
+
+    // Logs subcollection per client (audit trail)
+    match /clients/{clientId}/logs/{logId} {
+      allow read, write: if true;
+    }
+
+    // Default deny for everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
